@@ -25,12 +25,17 @@ class Renderer: NSObject, MTKViewDelegate {
     let argumentTable: MTL4ArgumentTable
     let depthState: MTLDepthStencilState
     
+    let light = Light(
+        direction: SIMD3<Float>(1, -1, -1),
+        color: SIMD3<Float>(1, 1, 1)
+    )
     let camera = Camera(
         position: SIMD3<Float>(0, 0, 10),
         target: SIMD3<Float>(0, 0, 0),
         up: SIMD3<Float>(0, 1, 0)
     )
     var entities: [Entity] = []
+    var timer: Float = 0
     
     init(device: MTLDevice) throws {
         self.device = device
@@ -101,6 +106,7 @@ class Renderer: NSObject, MTKViewDelegate {
     
     func draw(in view: MTKView) {
         guard let drawable = view.currentDrawable else { return }
+        timer += 0.005
         
         // MARK: - 更新 Uniforms
         let aspect = view.drawableSize.width / view.drawableSize.height
@@ -130,7 +136,7 @@ class Renderer: NSObject, MTKViewDelegate {
         // MARK: - Setup State
         renderEncoder.setRenderPipelineState(pipelineState)
         renderEncoder.setDepthStencilState(depthState)
-        renderEncoder.setArgumentTable(argumentTable, stages: .vertex)
+        renderEncoder.setArgumentTable(argumentTable, stages: [.vertex, .fragment])
         
         
         // MARK: - Draw
@@ -170,7 +176,7 @@ class Renderer: NSObject, MTKViewDelegate {
     
     func updateUniforms(uniformBuffer: MTLBuffer, aspect: Float) {
         // 准备 MVP 矩阵
-        let modelMatrix = matrix_identity_float4x4
+        let modelMatrix = float4x4(rotationY: timer)
         
         let viewMatrix = lookAt(
             eye: camera.position,
@@ -187,11 +193,27 @@ class Renderer: NSObject, MTKViewDelegate {
         
         // 模型坐标 -> 世界坐标 -> 视图坐标 -> 裁剪坐标
         let mvpMatrix = projectionMatrix * viewMatrix * modelMatrix
+        let normalMatrix = normalMatrix(modelMatrix: modelMatrix)
         
-        var uniforms = Uniforms(mvpMatrix: mvpMatrix)
+        var uniforms = Uniforms(
+            mvpMatrix: mvpMatrix,
+            normalMatrix: normalMatrix,
+            light: light
+        )
         
         // 复制到 GPU 缓冲区
         memcpy(uniformBuffer.contents(), &uniforms, MemoryLayout<Uniforms>.size)
+    }
+    
+    func normalMatrix(modelMatrix: float4x4) -> float3x3 {
+        let inverseTranspose = modelMatrix.inverse.transpose
+        let normalMatrix = float3x3(
+            SIMD3<Float>(inverseTranspose.columns.0.x, inverseTranspose.columns.0.y, inverseTranspose.columns.0.z),
+            SIMD3<Float>(inverseTranspose.columns.1.x, inverseTranspose.columns.1.y, inverseTranspose.columns.1.z),
+            SIMD3<Float>(inverseTranspose.columns.2.x, inverseTranspose.columns.2.y, inverseTranspose.columns.2.z)
+        )
+        
+        return normalMatrix
     }
     
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
@@ -199,4 +221,15 @@ class Renderer: NSObject, MTKViewDelegate {
 
 #Preview {
     MetalView()
+}
+
+extension float4x4 {
+    init(rotationY angle: Float) {
+        self = float4x4(
+            SIMD4<Float>( cos(angle), 0,  sin(angle), 0),
+            SIMD4<Float>( 0,         1,  0,          0),
+            SIMD4<Float>(-sin(angle), 0,  cos(angle), 0),
+            SIMD4<Float>( 0,         0,  0,          1)
+        )
+    }
 }

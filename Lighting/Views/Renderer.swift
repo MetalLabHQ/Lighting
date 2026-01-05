@@ -120,9 +120,7 @@ class Renderer: NSObject, MTKViewDelegate {
         
         
         // MARK: - Render Pass
-        let mtl4RenderPassDescriptor = MTL4RenderPassDescriptor()
-        mtl4RenderPassDescriptor.colorAttachments[0].texture = drawable.texture
-        mtl4RenderPassDescriptor.colorAttachments[0].loadAction = .clear
+        guard let mtl4RenderPassDescriptor = view.currentMTL4RenderPassDescriptor else { return }
         mtl4RenderPassDescriptor.colorAttachments[0].clearColor  = MTLClearColor(red: 0.2, green: 0.2, blue: 0.25, alpha: 1.0)
         
         
